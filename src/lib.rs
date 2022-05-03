@@ -1,17 +1,44 @@
 use std::io;
 
 fn encode(reader: &mut dyn io::Read, writer: &mut dyn io::Write) -> std::io::Result<usize> {
-    let mut buffer = [0u8];
+    let mut input = [0u8];
     let mut processed_bytes: usize = 0;
+
+    let encoding_size = 5;
+
+    //todo what happens when 1u8 << 8
+    //let mask = (1u8 << (mask_size + 1)) - 1;
+    let mut output_buffer = [0u8];
+    let mut output_buffer_size = 8u8;
+    let mut input_buffer_size = 0;
+
     loop {
-        let size = reader.read(&mut buffer)?;
-        if size == 0 {
-            //no more data to read
-            break;
+        if input_buffer_size == 0 {
+            let size = reader.read(&mut input)?;
+            if size == 0 {
+                //no more data to read
+                break;
+            }
+
+            processed_bytes += size;
+            input_buffer_size = encoding_size;
         }
 
-        processed_bytes += size;
-        writer.write(&mut buffer)?;
+        let mask_size = std::cmp::min(input_buffer_size, output_buffer_size);
+        let mask_left_shift = encoding_size - mask_size;
+        let mask = ((1 << (mask_size + 1)) - 1) << mask_left_shift;
+        output_buffer[0] = output_buffer[0] << mask_size;
+        output_buffer[0] = output_buffer[0] | ((input[0] & mask) >> mask_left_shift); 
+
+        input_buffer_size = input_buffer_size - mask_size;
+        output_buffer_size = output_buffer_size - mask_size;
+        if output_buffer_size == 0 {
+            writer.write(&mut output_buffer)?;
+        }
+    }
+
+    if output_buffer_size > 0 {
+        writer.write(&mut output_buffer)?;
     }
 
     Ok(processed_bytes)
