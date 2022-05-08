@@ -11,8 +11,6 @@ fn encode(reader: &mut dyn io::Read, writer: &mut dyn io::Write) -> std::io::Res
     let mut input_buffer_size = 0;
 
     loop {
-        println!("\n");
-        println!("input_buffer_size={:?}", input_buffer_size);
         if input_buffer_size == 0 {
             let size = reader.read(&mut input_buffer)?;
             if size == 0 {
@@ -25,20 +23,14 @@ fn encode(reader: &mut dyn io::Read, writer: &mut dyn io::Write) -> std::io::Res
         }
 
         let mask_size = std::cmp::min(input_buffer_size, output_buffer_size);
-        println!("mask_size={:?}", mask_size);
-        let mask: u8 = (1 << (mask_size)) - 1;
-        println!("mask={:#b}", mask);
-        println!("output_buffer={:#b}", output_buffer[0]);
-        output_buffer[0] = output_buffer[0] | ((input_buffer[0] & mask) << (output_buffer_size - mask_size)); 
-        println!("output_buffer={:#b}", output_buffer[0]);
+        let mask_shift = encoding_size - mask_size;
+        let mask: u8 = ((1 << (mask_size)) - 1) << mask_shift;
+        output_buffer[0] = output_buffer[0] | (((input_buffer[0] & mask) >> mask_shift) << (output_buffer_size - mask_size)); 
 
-        input_buffer_size = input_buffer_size - mask_size;
-        output_buffer_size = output_buffer_size - mask_size;
-        println!("input_buffer={:#b}", input_buffer[0]);
-        input_buffer[0] = input_buffer[0] << mask_size;
-        println!("input_buffer={:#b}", input_buffer[0]);
+        input_buffer_size -= mask_size;
+        output_buffer_size -= mask_size;
+        input_buffer[0] <<= mask_size;
         if output_buffer_size == 0 {
-            println!("cycle {:#0b}", output_buffer[0]);
             writer.write(&mut output_buffer)?;
             output_buffer_size = 8u8;
             output_buffer[0] = 0u8;
@@ -46,7 +38,6 @@ fn encode(reader: &mut dyn io::Read, writer: &mut dyn io::Write) -> std::io::Res
     }
 
     if output_buffer_size > 0 {
-        println!("final {:#0b}", output_buffer[0]);
         writer.write(&mut output_buffer)?;
     }
 
@@ -78,14 +69,17 @@ mod tests {
 
     #[test]
     fn test_encode_three_bytes() {
-        let input = [7u8, 1u8, 2u8];
-        let mut output = [0u8; 2]; 
+        let input = [7u8, 1, 2, 4, 7, 7, 7, 1, 1, 1, 2, 3, 4];
+        let mut output = [0u8; 5]; 
 
         //second output byte is to be checked
         let result = encode(&mut &input[..], &mut &mut output[..]);
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), 2);
+        assert_eq!(result.unwrap(), 13);
         assert_eq!(output[0], 0b11100101u8);
-        assert_eq!(output[1], 0b00000000u8); 
+        assert_eq!(output[1], 0b01001111u8); 
+        assert_eq!(output[2], 0b11111001u8); 
+        assert_eq!(output[3], 0b00100101u8); 
+        assert_eq!(output[4], 0b00111000u8); 
     }
 }
